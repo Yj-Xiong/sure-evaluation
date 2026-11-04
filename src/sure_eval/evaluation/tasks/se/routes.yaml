@@ -136,6 +136,24 @@ routes:
     input_contract: scoring/squim_si_sdr
     executor: sure_eval.evaluation.tasks.se.pipeline.evaluate_se_samples
   -
+    metric: squim_mos
+    aliases:
+      - squim-mos
+    family: no_reference_quality_prediction
+    pipeline_id: se.any.squim_mos.squim_mos_v1
+    nodes:
+      - scoring/squim_mos
+    input_contract: scoring/squim_mos
+    executor: sure_eval.evaluation.tasks.se.pipeline.evaluate_se_samples
+  -
+    metric: scoreq
+    family: no_reference_quality_prediction
+    pipeline_id: se.any.scoreq.scoreq_v1
+    nodes:
+      - scoring/scoreq
+    input_contract: scoring/scoreq
+    executor: sure_eval.evaluation.tasks.se.pipeline.evaluate_se_samples
+  -
     metric: nisqa_mos
     family: no_reference_quality_prediction
     pipeline_id: se.any.nisqa_mos.nisqa_mos_v1

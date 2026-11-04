@@ -9,8 +9,10 @@ from sure_eval.evaluation.tasks.classification.metrics import AccuracyMetric
 from sure_eval.evaluation.tasks.s2tt.metrics import BLEUMetric, BLEURT20Metric, XCOMETXLMetric
 from sure_eval.evaluation.tasks.se.metrics import (
     PESQMetric,
+    SCOREQMetric,
     SISDRMetric as SESISDRMetric,
     STOIMetric,
+    SQUIMMOSMetric,
 )
 from sure_eval.evaluation.tasks.tts.metrics import (
     CERMetric as TTSCERMetric,
@@ -43,6 +45,9 @@ class MetricRegistry:
         "sisdr": SESISDRMetric,
         "stoi": STOIMetric,
         "pesq": PESQMetric,
+        "squim_mos": SQUIMMOSMetric,
+        "squim-mos": SQUIMMOSMetric,
+        "scoreq": SCOREQMetric,
         "accuracy": AccuracyMetric,
         "bleu": BLEUMetric,
         "xcomet_xl": XCOMETXLMetric,

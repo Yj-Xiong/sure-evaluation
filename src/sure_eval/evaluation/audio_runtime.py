@@ -100,6 +100,14 @@ def build_se_runtime(
         squim_provider = SQUIMObjectiveProvider(device=device)
         for metric in squim_metrics:
             runtime["mos_providers"][metric] = squim_provider
+    if "squim_mos" in requested:
+        from sure_eval.evaluation.nodes.scoring._squim_subjective import SQUIMSubjectiveProvider
+
+        runtime["mos_providers"]["squim_mos"] = SQUIMSubjectiveProvider(device=device)
+    if "scoreq" in requested:
+        from sure_eval.evaluation.nodes.scoring._scoreq import SCOREQProvider
+
+        runtime["mos_providers"]["scoreq"] = SCOREQProvider(device=device)
     nisqa_metrics = requested & {"nisqa_mos", "nisqa_noi", "nisqa_dis", "nisqa_col", "nisqa_loud"}
     if nisqa_metrics:
         from sure_eval.evaluation.nodes.scoring._nisqa_dim import NISQADIMProvider
@@ -273,7 +281,7 @@ def _normalize_se_metric(metric: str) -> str:
         **{name.replace("_", "-"): name for name in (
             "dnsmos_p808", "dnsmos_sig", "dnsmos_bak", "squim_stoi",
             "squim_pesq", "squim_si_sdr", "nisqa_mos", "nisqa_noi",
-            "nisqa_dis", "nisqa_col", "nisqa_loud",
+            "nisqa_dis", "nisqa_col", "nisqa_loud", "squim_mos", "scoreq",
         )},
     }.get(normalized, normalized)
 

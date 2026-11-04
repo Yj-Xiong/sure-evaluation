@@ -26,6 +26,8 @@ sure-eval metric routes se --metric dnsmos
 | `squim_stoi` | `squim_stoi` | `se.any.squim_stoi.squim_stoi_v1` | `scoring/squim_stoi` | `enhanced_audio` |
 | `squim_pesq` | `squim_pesq` | `se.any.squim_pesq.squim_pesq_v1` | `scoring/squim_pesq` | `enhanced_audio` |
 | `squim_si_sdr` | `squim_si_sdr` | `se.any.squim_si_sdr.squim_si_sdr_v1` | `scoring/squim_si_sdr` | `enhanced_audio` |
+| `squim_mos` | `squim_mos` | `se.any.squim_mos.squim_mos_v1` | `scoring/squim_mos` | `enhanced_audio` |
+| `scoreq` | `scoreq` | `se.any.scoreq.scoreq_v1` | `scoring/scoreq` | `enhanced_audio` |
 | `nisqa_mos` | `nisqa_mos` | `se.any.nisqa_mos.nisqa_mos_v1` | `scoring/nisqa_mos` | `enhanced_audio` |
 | `nisqa_noi` | `nisqa_noi` | `se.any.nisqa_noi.nisqa_noi_v1` | `scoring/nisqa_noi` | `enhanced_audio` |
 | `nisqa_dis` | `nisqa_dis` | `se.any.nisqa_dis.nisqa_dis_v1` | `scoring/nisqa_dis` | `enhanced_audio` |
@@ -51,9 +53,13 @@ Existing `dnsmos` remains the calibrated P.835-style **OVRL** score. New
 `dnsmos_sig`, `dnsmos_bak`, and `dnsmos_p808` select the provider's calibrated
 SIG, BAK, and P808_MOS outputs; they do not reroute or change old `dnsmos`
 scores. These are learned predictions, not P.835/P.808 human listening tests.
-`squim_*` are TorchAudio SQUIM **no-reference predictions** of the named
-reference metrics; they cannot be mixed with `stoi`, `pesq`, or `si_sdr` as if
-they used the same measurement definition. `nisqa_*` are the five DIM outputs
+`squim_stoi`, `squim_pesq`, and `squim_si_sdr` are TorchAudio SQUIM
+**no-reference predictions** of the named reference metrics; they cannot be
+mixed with `stoi`, `pesq`, or `si_sdr` as if they used the same measurement
+definition. `squim_mos` is TorchAudio SQUIM Subjective: it predicts MOS from
+the enhanced waveform and a separately staged clean non-matching reference,
+so it is not a human listening test or a pure no-reference model. `scoreq` is
+the natural-speech no-reference SCOREQ MOS predictor. `nisqa_*` are the five DIM outputs
 from the same NISQA v2 checkpoint, with one corpus mean per output.
 
 POLQA/P.863 is **not** registered: its white paper is not a licensed scoring
@@ -119,7 +125,9 @@ lightweight nodes require `pystoi` (`estoi`), `librosa` (`lsd`), or
 | Family | Runtime asset | Environment variable | Material restriction |
 | --- | --- | --- | --- |
 | `lps` | Pinned `facebook/wav2vec2-lv-60-espeak-cv-ft` directory | `SURE_SE_LPS_MODEL_DIR` | `transformers==4.24.0` legacy weight-norm compatibility |
-| `squim_*` | TorchAudio `squim_objective_dns2020.pth` | `SURE_SE_SQUIM_OBJECTIVE_CKPT` | Objective weights CC BY 4.0 |
+| `squim_stoi`, `squim_pesq`, `squim_si_sdr` | TorchAudio `squim_objective_dns2020.pth` | `SURE_SE_SQUIM_OBJECTIVE_CKPT` | Objective weights CC BY 4.0 |
+| `squim_mos` | TorchAudio `squim_subjective_bvcc_daps.pth` plus a clean non-matching WAV | `SURE_SE_SQUIM_SUBJECTIVE_CKPT`, `SURE_SE_SQUIM_SUBJECTIVE_NMR` | Subjective weights CC BY-NC 4.0 |
+| `scoreq` | Natural-speech `adapt_nr_telephone.onnx` | `SURE_SE_SCOREQ_CHECKPOINT` | Verify model asset terms |
 | `nisqa_*` | NISQA DIM `nisqa.tar` | `SURE_SE_NISQA_DIM_CKPT` | Model weights CC BY-NC-SA 4.0; verify permitted use |
 
 No checkpoint, local virtual environment, or cached result belongs in the PR.

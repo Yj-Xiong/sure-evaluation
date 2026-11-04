@@ -25,6 +25,7 @@ from sure_eval.evaluation.nodes.scoring.lps.node import LPSProvider, levenshtein
 NEW_METRICS = (
     "estoi", "lsd", "nsrmr", "lps", "dnsmos_p808", "dnsmos_sig",
     "dnsmos_bak", "squim_stoi", "squim_pesq", "squim_si_sdr",
+    "squim_mos", "scoreq",
     "nisqa_mos", "nisqa_noi", "nisqa_dis", "nisqa_col", "nisqa_loud",
 )
 
@@ -159,15 +160,83 @@ def test_real_runtime_selects_shared_model_providers_without_loading_assets() ->
 
     runtime = build_se_runtime(
         metrics=("estoi", "lsd", "lps", "dnsmos_p808", "dnsmos_sig",
-                 "squim_pesq", "squim_stoi", "nisqa_mos", "nisqa_noi", "nsrmr"),
+                 "squim_pesq", "squim_stoi", "squim_mos", "scoreq",
+                 "nisqa_mos", "nisqa_noi", "nsrmr"),
         device="cpu",
     )
     assert set(runtime["reference_providers"]) == {"estoi", "lsd", "lps"}
     mos = runtime["mos_providers"]
-    assert set(mos) >= {"dnsmos_p808", "dnsmos_sig", "squim_pesq", "squim_stoi", "nisqa_mos", "nisqa_noi", "nsrmr"}
+    assert set(mos) >= {"dnsmos_p808", "dnsmos_sig", "squim_pesq", "squim_stoi",
+                        "squim_mos", "scoreq", "nisqa_mos", "nisqa_noi", "nsrmr"}
     assert mos["dnsmos_p808"] is mos["dnsmos_sig"]
     assert mos["squim_pesq"] is mos["squim_stoi"]
     assert mos["nisqa_mos"] is mos["nisqa_noi"]
+
+
+def test_squim_mos_and_scoreq_are_aggregated_as_distinct_se_scores() -> None:
+    from sure_eval.evaluation.tasks.se.pipeline import evaluate_se_samples
+    from sure_eval.evaluation.tasks.se.types import SESample
+
+    report = evaluate_se_samples(
+        [
+            SESample(enhanced_audio="a.wav", reference_audio="clean.wav", sample_id="a"),
+            SESample(enhanced_audio="b.wav", reference_audio="clean.wav", sample_id="b"),
+        ],
+        metrics=("squim_mos", "scoreq"),
+        mos_providers={
+            "squim_mos": lambda prediction, reference="", **_: {"squim_mos": 3.0 if prediction == "a.wav" else 4.0},
+            "scoreq": lambda prediction, reference="", **_: {"scoreq": 2.0 if prediction == "a.wav" else 4.0},
+        },
+    )
+
+    assert report.pipeline_id == "se.any.multi.squim_mos.squim_mos_v1__scoreq.scoreq_v1"
+    assert report.details["results"]["squim_mos"]["score"] == 3.5
+    assert report.details["results"]["scoreq"]["score"] == 3.0
+    assert report.details["results"]["squim_mos"]["unit"] == "predicted_mos"
+    assert report.details["results"]["scoreq"]["unit"] == "predicted_mos"
+
+
+def test_squim_subjective_provider_uses_non_matching_reference(monkeypatch) -> None:
+    torch = pytest.importorskip("torch")
+    from sure_eval.evaluation.nodes.scoring._squim_subjective import SQUIMSubjectiveProvider
+
+    provider = SQUIMSubjectiveProvider(non_matching_reference="staged.wav", device="cpu")
+    calls = []
+
+    class Model:
+        def __call__(self, waveform, reference):
+            calls.append((waveform.shape, reference.shape))
+            return torch.tensor([4.25])
+
+    monkeypatch.setattr(provider, "_load_audio", lambda path: torch.tensor([0.1, 0.2]))
+    monkeypatch.setattr(provider, "_load_reference", lambda: torch.tensor([0.3, 0.4, 0.5]))
+    monkeypatch.setattr(provider, "_load_model", lambda: Model())
+    result = provider("enhanced.wav")
+
+    assert result["squim_mos"] == pytest.approx(4.25)
+    assert calls == [((1, 2), (1, 3))]
+
+
+def test_scoreq_provider_reads_one_scalar_from_onnx_session(monkeypatch) -> None:
+    import numpy as np
+    from sure_eval.evaluation.nodes.scoring._scoreq import SCOREQProvider
+
+    provider = SCOREQProvider(checkpoint="staged.onnx", device="cpu")
+
+    class Session:
+        def get_inputs(self):
+            return [type("Input", (), {"name": "waveform"})()]
+
+        def run(self, outputs, inputs):
+            assert outputs is None
+            assert inputs["waveform"].shape == (1, 320)
+            return [np.array([[3.75]], dtype=np.float32)]
+
+    monkeypatch.setattr(provider, "_load_session", lambda: Session())
+    monkeypatch.setattr(provider, "_load_audio", lambda path: np.zeros((1, 320), dtype=np.float32))
+    result = provider("enhanced.wav")
+
+    assert result["scoreq"] == pytest.approx(3.75)
 
 
 def test_cli_describe_run_report_preserves_identity(monkeypatch, tmp_path: Path) -> None:
@@ -214,12 +283,16 @@ def test_script_stub_reports_new_atomic_identity(tmp_path: Path) -> None:
     output = tmp_path / "stub.json"
     subprocess.run([
         sys.executable, "scripts/run_se_metric_pipeline.py", "--enhanced-audio", "enhanced.wav",
-        "--reference-audio", "clean.wav", "--metrics", "lsd,nsrmr", "--stub",
+        "--reference-audio", "clean.wav", "--metrics", "lsd,nsrmr,squim_mos,scoreq", "--stub",
         "--output", str(output),
     ], check=True)
     payload = json.loads(output.read_text())
-    assert payload["report"]["pipeline_id"] == "se.any.multi.lsd.lsd_v1__nsrmr.nsrmr_v1"
+    assert payload["report"]["pipeline_id"] == (
+        "se.any.multi.lsd.lsd_v1__nsrmr.nsrmr_v1__squim_mos.squim_mos_v1__scoreq.scoreq_v1"
+    )
     assert payload["metrics"]["lsd"]["score"] == 5.2
     assert payload["metrics"]["nsrmr"]["score"] == 4.1
     assert payload["metrics"]["lsd"]["higher_is_better"] is False
     assert payload["metrics"]["nsrmr"]["unit"] == "ratio"
+    assert payload["metrics"]["squim_mos"]["score"] == 3.7
+    assert payload["metrics"]["scoreq"]["score"] == 3.8

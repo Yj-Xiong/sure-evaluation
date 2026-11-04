@@ -56,6 +56,8 @@ def _build_stub_providers() -> tuple[dict[str, Any], dict[str, Any]]:
             "squim_stoi": lambda prediction, reference="", **kwargs: {"squim_stoi": 0.89},
             "squim_pesq": lambda prediction, reference="", **kwargs: {"squim_pesq": 2.9},
             "squim_si_sdr": lambda prediction, reference="", **kwargs: {"squim_si_sdr": 10.0},
+            "squim_mos": lambda prediction, reference="", **kwargs: {"squim_mos": 3.7},
+            "scoreq": lambda prediction, reference="", **kwargs: {"scoreq": 3.8},
             "nisqa_mos": lambda prediction, reference="", **kwargs: {"nisqa_mos": 3.8},
             "nisqa_noi": lambda prediction, reference="", **kwargs: {"nisqa_noi": 3.6},
             "nisqa_dis": lambda prediction, reference="", **kwargs: {"nisqa_dis": 3.7},
@@ -106,6 +108,14 @@ def _build_real_providers(*, device: str, cache_dir: Path, metrics: tuple[str, .
         squim_provider = SQUIMObjectiveProvider(device=device)
         for metric in squim_metrics:
             mos_providers[metric] = squim_provider
+    if "squim_mos" in metrics:
+        from sure_eval.evaluation.nodes.scoring._squim_subjective import SQUIMSubjectiveProvider
+
+        mos_providers["squim_mos"] = SQUIMSubjectiveProvider(device=device)
+    if "scoreq" in metrics:
+        from sure_eval.evaluation.nodes.scoring._scoreq import SCOREQProvider
+
+        mos_providers["scoreq"] = SCOREQProvider(device=device)
     nisqa_metrics = set(metrics) & {"nisqa_mos", "nisqa_noi", "nisqa_dis", "nisqa_col", "nisqa_loud"}
     if nisqa_metrics:
         from sure_eval.evaluation.nodes.scoring._nisqa_dim import NISQADIMProvider
@@ -162,6 +172,8 @@ def _normalize_metric(metric: str) -> str:
         "squim-stoi": "squim_stoi",
         "squim-pesq": "squim_pesq",
         "squim-si-sdr": "squim_si_sdr",
+        "squim-mos": "squim_mos",
+        "scoreq": "scoreq",
         "nisqa-mos": "nisqa_mos",
         "nisqa-noi": "nisqa_noi",
         "nisqa-dis": "nisqa_dis",
