@@ -127,7 +127,7 @@ lightweight nodes require `pystoi` (`estoi`), `librosa` (`lsd`), or
 | `lps` | Pinned `facebook/wav2vec2-lv-60-espeak-cv-ft` directory | `SURE_SE_LPS_MODEL_DIR` | `transformers==4.24.0` legacy weight-norm compatibility |
 | `squim_stoi`, `squim_pesq`, `squim_si_sdr` | TorchAudio `squim_objective_dns2020.pth` | `SURE_SE_SQUIM_OBJECTIVE_CKPT` | Objective weights CC BY 4.0 |
 | `squim_mos` | TorchAudio `squim_subjective_bvcc_daps.pth` plus a clean non-matching WAV | `SURE_SE_SQUIM_SUBJECTIVE_CKPT`, `SURE_SE_SQUIM_SUBJECTIVE_NMR` | Subjective weights CC BY-NC 4.0 |
-| `scoreq` | Natural-speech `adapt_nr_telephone.onnx` | `SURE_SE_SCOREQ_CHECKPOINT` | Verify model asset terms |
+| `scoreq` | Natural-speech `adapt_nr_telephone.onnx` | `sure-eval env download --node scoring/scoreq` or `SURE_SE_SCOREQ_CHECKPOINT` | Verify model asset terms |
 | `nisqa_*` | NISQA DIM `nisqa.tar` | `SURE_SE_NISQA_DIM_CKPT` | Model weights CC BY-NC-SA 4.0; verify permitted use |
 
 No checkpoint, local virtual environment, or cached result belongs in the PR.

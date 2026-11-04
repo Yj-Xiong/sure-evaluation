@@ -21,8 +21,9 @@ enhancement and dereverberation.
 ## Runtime and Assets
 
 - Runtime packages: NumPy, ONNX Runtime, Torch, and TorchAudio.
-- Stage the released `adapt_nr_telephone.onnx` checkpoint and set
-  `SURE_SE_SCOREQ_CHECKPOINT`.
+- Run `sure-eval env download --node scoring/scoreq` to stage the released
+  `adapt_nr_telephone.onnx` under this node's `checkpoints/` directory, or
+  set `SURE_SE_SCOREQ_CHECKPOINT` to an existing local copy.
 - The SCOREQ software is MIT licensed; verify the model asset terms before
   redistribution.
 

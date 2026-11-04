@@ -12,17 +12,19 @@ class SCOREQProvider:
     """Run the released natural-speech no-reference SCOREQ ONNX model."""
 
     def __init__(self, *, checkpoint: str | None = None, device: str = "cpu") -> None:
-        self.checkpoint = checkpoint or os.environ.get("SURE_SE_SCOREQ_CHECKPOINT")
+        self.checkpoint = checkpoint or os.environ.get("SURE_SE_SCOREQ_CHECKPOINT") or str(
+            Path(__file__).resolve().parent / "scoreq" / "checkpoints" / "adapt_nr_telephone.onnx"
+        )
         self.device = device
         self._session: Any | None = None
         self._scores: dict[str, float] = {}
 
     def _load_session(self) -> Any:
         if self._session is None:
-            if not self.checkpoint or not Path(self.checkpoint).is_file():
+            if not Path(self.checkpoint).is_file():
                 raise RuntimeError(
-                    "SCOREQ requires SURE_SE_SCOREQ_CHECKPOINT pointing to "
-                    "adapt_nr_telephone.onnx"
+                    "SCOREQ requires adapt_nr_telephone.onnx at the declared node "
+                    "checkpoint path or SURE_SE_SCOREQ_CHECKPOINT pointing to it"
                 )
             import onnxruntime as ort
 

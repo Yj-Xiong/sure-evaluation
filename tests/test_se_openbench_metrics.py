@@ -239,6 +239,16 @@ def test_scoreq_provider_reads_one_scalar_from_onnx_session(monkeypatch) -> None
     assert result["scoreq"] == pytest.approx(3.75)
 
 
+def test_scoreq_default_checkpoint_matches_declared_node_asset(monkeypatch) -> None:
+    from sure_eval.evaluation.nodes.scoring._scoreq import SCOREQProvider
+
+    monkeypatch.delenv("SURE_SE_SCOREQ_CHECKPOINT", raising=False)
+    provider = SCOREQProvider(device="cpu")
+    assert Path(provider.checkpoint).parts[-3:] == (
+        "scoreq", "checkpoints", "adapt_nr_telephone.onnx"
+    )
+
+
 def test_cli_describe_run_report_preserves_identity(monkeypatch, tmp_path: Path) -> None:
     import sure_eval.evaluation.audio_runtime as runtime
 
