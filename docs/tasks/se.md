@@ -28,6 +28,11 @@ sure-eval metric routes se --metric dnsmos
 | `squim_si_sdr` | `squim_si_sdr` | `se.any.squim_si_sdr.squim_si_sdr_v1` | `scoring/squim_si_sdr` | `enhanced_audio` |
 | `squim_mos` | `squim_mos` | `se.any.squim_mos.squim_mos_v1` | `scoring/squim_mos` | `enhanced_audio` |
 | `scoreq` | `scoreq` | `se.any.scoreq.scoreq_v1` | `scoring/scoreq` | `enhanced_audio` |
+| `sq_ast_mos` | `sq_ast_mos` | `se.any.sq_ast_mos.sq_ast_mos_v1` | `scoring/sq_ast_mos` | `enhanced_audio` |
+| `sq_ast_noi` | `sq_ast_noi` | `se.any.sq_ast_noi.sq_ast_noi_v1` | `scoring/sq_ast_noi` | `enhanced_audio` |
+| `sq_ast_dis` | `sq_ast_dis` | `se.any.sq_ast_dis.sq_ast_dis_v1` | `scoring/sq_ast_dis` | `enhanced_audio` |
+| `sq_ast_col` | `sq_ast_col` | `se.any.sq_ast_col.sq_ast_col_v1` | `scoring/sq_ast_col` | `enhanced_audio` |
+| `sq_ast_loud` | `sq_ast_loud` | `se.any.sq_ast_loud.sq_ast_loud_v1` | `scoring/sq_ast_loud` | `enhanced_audio` |
 | `nisqa_mos` | `nisqa_mos` | `se.any.nisqa_mos.nisqa_mos_v1` | `scoring/nisqa_mos` | `enhanced_audio` |
 | `nisqa_noi` | `nisqa_noi` | `se.any.nisqa_noi.nisqa_noi_v1` | `scoring/nisqa_noi` | `enhanced_audio` |
 | `nisqa_dis` | `nisqa_dis` | `se.any.nisqa_dis.nisqa_dis_v1` | `scoring/nisqa_dis` | `enhanced_audio` |
@@ -61,6 +66,12 @@ the enhanced waveform and a separately staged clean non-matching reference,
 so it is not a human listening test or a pure no-reference model. `scoreq` is
 the natural-speech no-reference SCOREQ MOS predictor. `nisqa_*` are the five DIM outputs
 from the same NISQA v2 checkpoint, with one corpus mean per output.
+`sq_ast_*` are SQ-AST's five non-intrusive predictions using the improved
+weights: overall quality, noisiness, discontinuity, coloration, and loudness.
+Each is mapped from a sigmoid output as `4 * output + 1` to a 1–5
+ACR-like scale. Audio is downmixed and resampled to 48 kHz; the official
+feature-extractor normalization is used. The published operating range is
+4–12 seconds per clip, and scores outside it should be treated as exploratory.
 
 POLQA/P.863 is **not** registered: its white paper is not a licensed scoring
 implementation. Do not report a proxy as POLQA.
@@ -128,6 +139,7 @@ lightweight nodes require `pystoi` (`estoi`), `librosa` (`lsd`), or
 | `squim_stoi`, `squim_pesq`, `squim_si_sdr` | TorchAudio `squim_objective_dns2020.pth` | `SURE_SE_SQUIM_OBJECTIVE_CKPT` | Objective weights CC BY 4.0 |
 | `squim_mos` | TorchAudio `squim_subjective_bvcc_daps.pth` plus a clean non-matching WAV | `SURE_SE_SQUIM_SUBJECTIVE_CKPT`, `SURE_SE_SQUIM_SUBJECTIVE_NMR` | Subjective weights CC BY-NC 4.0 |
 | `scoreq` | Natural-speech `adapt_nr_telephone.onnx` | `sure-eval env download --node scoring/scoreq` or `SURE_SE_SCOREQ_CHECKPOINT` | Verify model asset terms |
+| `sq_ast_*` | Improved `mos/noi/dis/col/loud.pth` heads and pinned `MIT/ast-finetuned-audioset-10-10-0.4593` snapshot | `SURE_SE_SQ_AST_*_CKPT`, `SURE_SE_SQ_AST_BASE_MODEL_DIR` | Repository code MIT; base model BSD-3-Clause; improved head asset terms unspecified |
 | `nisqa_*` | NISQA DIM `nisqa.tar` | `SURE_SE_NISQA_DIM_CKPT` | Model weights CC BY-NC-SA 4.0; verify permitted use |
 
 No checkpoint, local virtual environment, or cached result belongs in the PR.

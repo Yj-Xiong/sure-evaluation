@@ -26,6 +26,7 @@ NEW_METRICS = (
     "estoi", "lsd", "nsrmr", "lps", "dnsmos_p808", "dnsmos_sig",
     "dnsmos_bak", "squim_stoi", "squim_pesq", "squim_si_sdr",
     "squim_mos", "scoreq",
+    "sq_ast_mos", "sq_ast_noi", "sq_ast_dis", "sq_ast_col", "sq_ast_loud",
     "nisqa_mos", "nisqa_noi", "nisqa_dis", "nisqa_col", "nisqa_loud",
 )
 
@@ -153,6 +154,7 @@ def test_new_routes_require_reference_only_when_needed(tmp_path: Path) -> None:
         with pytest.raises(SampleJsonlError, match="reference_audio is required"):
             load_se_samples_jsonl(samples, metrics=(metric,))
     assert len(load_se_samples_jsonl(samples, metrics=("nisqa_mos", "squim_stoi", "nsrmr"))) == 1
+    assert len(load_se_samples_jsonl(samples, metrics=("sq_ast_mos",))) == 1
 
 
 def test_real_runtime_selects_shared_model_providers_without_loading_assets() -> None:
@@ -161,16 +163,149 @@ def test_real_runtime_selects_shared_model_providers_without_loading_assets() ->
     runtime = build_se_runtime(
         metrics=("estoi", "lsd", "lps", "dnsmos_p808", "dnsmos_sig",
                  "squim_pesq", "squim_stoi", "squim_mos", "scoreq",
-                 "nisqa_mos", "nisqa_noi", "nsrmr"),
+                 "nisqa_mos", "nisqa_noi", "nsrmr", "sq_ast_mos", "sq_ast_noi"),
         device="cpu",
     )
     assert set(runtime["reference_providers"]) == {"estoi", "lsd", "lps"}
     mos = runtime["mos_providers"]
     assert set(mos) >= {"dnsmos_p808", "dnsmos_sig", "squim_pesq", "squim_stoi",
-                        "squim_mos", "scoreq", "nisqa_mos", "nisqa_noi", "nsrmr"}
+                        "squim_mos", "scoreq", "nisqa_mos", "nisqa_noi", "nsrmr",
+                        "sq_ast_mos", "sq_ast_noi"}
     assert mos["dnsmos_p808"] is mos["dnsmos_sig"]
     assert mos["squim_pesq"] is mos["squim_stoi"]
     assert mos["nisqa_mos"] is mos["nisqa_noi"]
+    assert mos["sq_ast_mos"] is mos["sq_ast_noi"]
+
+
+def test_sq_ast_five_dimensions_have_distinct_routes_and_per_sample_scores() -> None:
+    from sure_eval.evaluation.tasks.se.pipeline import evaluate_se_samples
+    from sure_eval.evaluation.tasks.se.types import SESample
+
+    fields = ("sq_ast_mos", "sq_ast_noi", "sq_ast_dis", "sq_ast_col", "sq_ast_loud")
+    values = {field: 3.0 + index * 0.2 for index, field in enumerate(fields)}
+    def provider(prediction, reference="", **_):
+        return dict(values)
+    report = evaluate_se_samples(
+        [SESample(enhanced_audio="enhanced.wav", sample_id="example")],
+        metrics=fields,
+        mos_providers={field: provider for field in fields},
+    )
+
+    assert report.pipeline_id == "se.any.multi." + "__".join(
+        f"{field}.{field}_v1" for field in fields
+    )
+    assert report.computation_node_ids == tuple(f"scoring/{field}" for field in fields)
+    for field in fields:
+        assert report.details["results"][field]["score"] == pytest.approx(values[field])
+        assert report.details["results"][field]["per_sample"][0][field] == pytest.approx(values[field])
+        assert report.details["results"][field]["higher_is_better"] is True
+    assert report.details["results"]["sq_ast_mos"]["unit"] == "predicted_mos"
+    for field in fields[1:]:
+        assert report.details["results"][field]["unit"] == "predicted_acr_score"
+
+
+def test_sq_ast_selected_head_scaling_and_cache(monkeypatch, tmp_path: Path) -> None:
+    torch = pytest.importorskip("torch")
+    from sure_eval.evaluation.nodes.scoring._sq_ast import SQASTProvider
+
+    provider = SQASTProvider(
+        dimensions=("noi",), weights_dir=str(tmp_path),
+        base_model_dir=str(tmp_path), device="cpu",
+    )
+    calls = []
+
+    class Extractor:
+        def __call__(self, waveform, *, sampling_rate, return_attention_mask, return_tensors):
+            assert sampling_rate == 48000
+            assert return_attention_mask is True
+            assert return_tensors == "pt"
+            calls.append("features")
+            return {"input_values": torch.ones((1, 1024, 128))}
+
+    class Model:
+        def __call__(self, features):
+            assert features.shape == (1, 1024, 128)
+            calls.append("model")
+            return torch.tensor([0.5])
+
+    monkeypatch.setattr(provider, "_load_models", lambda: (Extractor(), {"noi": Model()}))
+    monkeypatch.setattr(provider, "_load_waveform", lambda path: torch.ones(48000))
+    first = provider("sample.wav")
+    second = provider("sample.wav")
+
+    assert first["sq_ast_noi"] == pytest.approx(3.0)
+    assert second == first
+    assert calls == ["features", "model"]
+
+
+def test_sq_ast_default_head_path_matches_atomic_node(monkeypatch) -> None:
+    from sure_eval.evaluation.nodes.scoring._sq_ast import SQASTProvider
+
+    monkeypatch.delenv("SURE_SE_SQ_AST_WEIGHTS_DIR", raising=False)
+    monkeypatch.delenv("SURE_SE_SQ_AST_NOI_CKPT", raising=False)
+    provider = SQASTProvider(dimensions=("noi",), device="cpu")
+    assert provider._weight_path("noi").parts[-4:] == (
+        "sq_ast_noi", "checkpoints", "weights", "noi.pth"
+    )
+    assert provider.base_model_dir.parts[-3:] == (
+        "sq_ast_noi", "checkpoints", "ast-base"
+    )
+
+
+def test_sq_ast_registry_metric_uses_selected_dimension() -> None:
+    from sure_eval.evaluation.registry import MetricRegistry
+
+    metric = MetricRegistry.get_metric(
+        "sq_ast_noi",
+        score_provider=lambda prediction, reference="": {"sq_ast_noi": 4.1},
+    )
+    result = metric.calculate("enhanced.wav", "")
+    assert result.metric_name == "sq_ast_noi"
+    assert result.score == pytest.approx(4.1)
+    assert result.details["per_sample"][0]["sq_ast_noi"] == pytest.approx(4.1)
+
+
+def test_sq_ast_cli_describe_run_report_preserves_five_slots(monkeypatch, tmp_path: Path) -> None:
+    import sure_eval.evaluation.audio_runtime as runtime
+
+    metrics = ("sq_ast_mos", "sq_ast_noi", "sq_ast_dis", "sq_ast_col", "sq_ast_loud")
+    audio = tmp_path / "sample.wav"
+    audio.write_bytes(b"provider fixture")
+    samples = tmp_path / "samples.jsonl"
+    samples.write_text(json.dumps({"sample_id": "a", "enhanced_audio": "sample.wav"}) + "\n")
+    values = {metric: 3.0 + index * 0.1 for index, metric in enumerate(metrics)}
+
+    def providers(*, metrics: tuple[str, ...], device="cuda", cache_dir=None):
+        assert metrics == ("sq_ast_mos", "sq_ast_noi", "sq_ast_dis", "sq_ast_col", "sq_ast_loud")
+        def provider(prediction, reference="", **_):
+            return dict(values)
+        return {"reference_providers": {}, "mos_providers": {metric: provider for metric in metrics}}
+
+    monkeypatch.setattr(runtime, "build_se_runtime", providers)
+    runner = CliRunner()
+    pipeline = tmp_path / "pipeline.json"
+    describe = runner.invoke(app, [
+        "metric", "describe", "se", "--metrics", ",".join(metrics),
+        "--output", str(pipeline), "--json",
+    ])
+    assert describe.exit_code == 0, describe.stdout
+    spec = json.loads(pipeline.read_text())
+    assert spec["metrics"] == list(metrics)
+    assert [slot["metric"] for slot in spec["pipeline"]] == list(metrics)
+    output = tmp_path / "out"
+    run = runner.invoke(app, [
+        "metric", "run", "--pipeline", str(pipeline),
+        "--samples-jsonl", str(samples), "--output-dir", str(output),
+        "--device", "cpu", "--json",
+    ])
+    assert run.exit_code == 0, run.stdout
+    report = json.loads((output / "report.json").read_text())
+    description = json.loads((output / "pipeline_description.json").read_text())
+    assert report["pipeline_id"] == description["pipeline_id"] == spec["pipeline_id"]
+    assert list(report["details"]["results"]) == list(metrics)
+    for metric in metrics:
+        assert report["details"]["results"][metric]["score"] == pytest.approx(values[metric])
+        assert len(report["details"]["results"][metric]["per_sample"]) == 1
 
 
 def test_squim_mos_and_scoreq_are_aggregated_as_distinct_se_scores() -> None:

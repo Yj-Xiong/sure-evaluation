@@ -108,6 +108,18 @@ def build_se_runtime(
         from sure_eval.evaluation.nodes.scoring._scoreq import SCOREQProvider
 
         runtime["mos_providers"]["scoreq"] = SCOREQProvider(device=device)
+    sq_ast_metrics = requested & {
+        "sq_ast_mos", "sq_ast_noi", "sq_ast_dis", "sq_ast_col", "sq_ast_loud"
+    }
+    if sq_ast_metrics:
+        from sure_eval.evaluation.nodes.scoring._sq_ast import SQASTProvider
+
+        sq_ast_provider = SQASTProvider(
+            dimensions=tuple(sorted(metric.removeprefix("sq_ast_") for metric in sq_ast_metrics)),
+            device=device,
+        )
+        for metric in sq_ast_metrics:
+            runtime["mos_providers"][metric] = sq_ast_provider
     nisqa_metrics = requested & {"nisqa_mos", "nisqa_noi", "nisqa_dis", "nisqa_col", "nisqa_loud"}
     if nisqa_metrics:
         from sure_eval.evaluation.nodes.scoring._nisqa_dim import NISQADIMProvider
@@ -282,6 +294,7 @@ def _normalize_se_metric(metric: str) -> str:
             "dnsmos_p808", "dnsmos_sig", "dnsmos_bak", "squim_stoi",
             "squim_pesq", "squim_si_sdr", "nisqa_mos", "nisqa_noi",
             "nisqa_dis", "nisqa_col", "nisqa_loud", "squim_mos", "scoreq",
+            "sq_ast_mos", "sq_ast_noi", "sq_ast_dis", "sq_ast_col", "sq_ast_loud",
         )},
     }.get(normalized, normalized)
 

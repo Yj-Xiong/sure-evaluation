@@ -176,6 +176,58 @@ class SCOREQMetric(_NoReferenceMetric):
         return next((key for key in ("scoreq", "mos", "score") if key in row), None)
 
 
+def _sq_ast_source(dimension: str) -> MetricSource:
+    return MetricSource(
+        primary_reference="Wardah et al., SQ-AST, Interspeech 2025",
+        method=f"Improved SQ-AST {dimension} prediction from 48 kHz enhanced audio; 4 * sigmoid + 1.",
+        score_key=f"sq_ast_{dimension}",
+        higher_is_better=True,
+        dependencies=("torch", "torchaudio", "transformers"),
+    )
+
+
+class _SQASTMetric(_NoReferenceMetric):
+    dimension = "mos"
+
+    def _default_provider(self) -> ScoreProvider:
+        from sure_eval.evaluation.nodes.scoring._sq_ast import SQASTProvider
+
+        return SQASTProvider(dimensions=(self.dimension,))
+
+    def _find_score_key(self, row: dict[str, Any]) -> str | None:
+        return next((key for key in (self.source.score_key, "score") if key in row), None)
+
+
+class SQASTMOSMetric(_SQASTMetric):
+    metric_name = "sq_ast_mos"
+    dimension = "mos"
+    source = _sq_ast_source(dimension)
+
+
+class SQASTNOIMetric(_SQASTMetric):
+    metric_name = "sq_ast_noi"
+    dimension = "noi"
+    source = _sq_ast_source(dimension)
+
+
+class SQASTDISMetric(_SQASTMetric):
+    metric_name = "sq_ast_dis"
+    dimension = "dis"
+    source = _sq_ast_source(dimension)
+
+
+class SQASTCOLMetric(_SQASTMetric):
+    metric_name = "sq_ast_col"
+    dimension = "col"
+    source = _sq_ast_source(dimension)
+
+
+class SQASTLOUDMetric(_SQASTMetric):
+    metric_name = "sq_ast_loud"
+    dimension = "loud"
+    source = _sq_ast_source(dimension)
+
+
 class SISDRMetric(_FullReferenceMetric):
     """Scale-invariant SDR in dB for enhanced speech against clean speech."""
 
@@ -233,6 +285,11 @@ class PESQMetric(_FullReferenceMetric):
 __all__ = [
     "PESQMetric",
     "SCOREQMetric",
+    "SQASTCOLMetric",
+    "SQASTDISMetric",
+    "SQASTLOUDMetric",
+    "SQASTMOSMetric",
+    "SQASTNOIMetric",
     "SISDRMetric",
     "STOIMetric",
     "SQUIMMOSMetric",
