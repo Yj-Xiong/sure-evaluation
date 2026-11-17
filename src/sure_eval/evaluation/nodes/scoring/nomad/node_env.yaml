@@ -1,0 +1,37 @@
+id: scoring/nomad
+group: se-no-reference
+runtime:
+  type: pip
+  optional: true
+  gpu: optional
+packages:
+  - name: nomad_audio
+    version: "==0.0.8"
+models:
+  - id: nomad/nomad_best_model.pt
+    provider: manual
+    source: https://www.dropbox.com/scl/fi/uws3wk327adbwqo22cr0p/nomad_best_model.pt?rlkey=cco21iba6xxi81a0dm9lpa7zj&dl=1
+    target: checkpoints/nomad_best_model.pt
+    env: SURE_SE_NOMAD_CHECKPOINT
+    license: mit
+  - id: facebook/wav2vec_small.pt
+    provider: url
+    auto_download: true
+    source: https://dl.fbaipublicfiles.com/fairseq/wav2vec/wav2vec_small.pt
+    target: checkpoints/wav2vec_small.pt
+    env: SURE_SE_NOMAD_WAV2VEC_CHECKPOINT
+    sha256: c66c39eaed1b79a61ea8573f71e08f6641ff156b6a8f458cfaab53877dfa4a26
+  - id: nomad/clean-reference-pool
+    provider: manual
+    target: checkpoints/reference_pool
+    env: SURE_SE_NOMAD_REFERENCE_DIR
+    license: user-supplied-clean-speech
+verify:
+  imports: [nomad_audio, fairseq, torch, torchaudio]
+  files:
+    - path: nomad_best_model.pt
+      relative_to_env: SURE_SE_NOMAD_CHECKPOINT
+      default_base: checkpoints
+    - path: wav2vec_small.pt
+      relative_to_env: SURE_SE_NOMAD_WAV2VEC_CHECKPOINT
+      default_base: checkpoints

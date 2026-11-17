@@ -16,6 +16,7 @@ sure-eval metric routes se --metric dnsmos
 | `lsd` | `lsd` | `se.any.lsd.lsd_v1` | `scoring/lsd` | `enhanced_audio`, `reference_audio` |
 | `lps` | `lps` | `se.any.lps.lps_v1` | `scoring/lps` | `enhanced_audio`, `reference_audio` |
 | `pesq` | `pesq` | `se.any.pesq.pesq_v1` | `scoring/pesq` | `enhanced_audio`, `reference_audio` |
+| `visqol` | `visqol` | `se.any.visqol.visqol_v1` | `scoring/visqol` | `enhanced_audio`, `reference_audio` |
 | `dnsmos` | `dnsmos` | `se.any.dnsmos.dnsmos_v1` | `scoring/dnsmos` | `enhanced_audio` |
 | `dnsmos_p808` | `dnsmos_p808` | `se.any.dnsmos_p808.dnsmos_p808_v1` | `scoring/dnsmos_p808` | `enhanced_audio` |
 | `dnsmos_sig` | `dnsmos_sig` | `se.any.dnsmos_sig.dnsmos_sig_v1` | `scoring/dnsmos_sig` | `enhanced_audio` |
@@ -28,6 +29,7 @@ sure-eval metric routes se --metric dnsmos
 | `squim_si_sdr` | `squim_si_sdr` | `se.any.squim_si_sdr.squim_si_sdr_v1` | `scoring/squim_si_sdr` | `enhanced_audio` |
 | `squim_mos` | `squim_mos` | `se.any.squim_mos.squim_mos_v1` | `scoring/squim_mos` | `enhanced_audio` |
 | `scoreq` | `scoreq` | `se.any.scoreq.scoreq_v1` | `scoring/scoreq` | `enhanced_audio` |
+| `nomad` | `nomad` | `se.any.nomad.nomad_v1` | `scoring/nomad` | `enhanced_audio` |
 | `sq_ast_mos` | `sq_ast_mos` | `se.any.sq_ast_mos.sq_ast_mos_v1` | `scoring/sq_ast_mos` | `enhanced_audio` |
 | `sq_ast_noi` | `sq_ast_noi` | `se.any.sq_ast_noi.sq_ast_noi_v1` | `scoring/sq_ast_noi` | `enhanced_audio` |
 | `sq_ast_dis` | `sq_ast_dis` | `se.any.sq_ast_dis.sq_ast_dis_v1` | `scoring/sq_ast_dis` | `enhanced_audio` |
@@ -41,7 +43,7 @@ sure-eval metric routes se --metric dnsmos
 
 The default metrics and default bundle remain unchanged. Every new metric is an
 opt-in atomic route. All scores aggregate by arithmetic mean of per-sample
-scores. `lsd` (dB) is **lower-is-better**; all other
+scores. `lsd` (dB) and `nomad` are **lower-is-better**; all other
 metrics are higher-is-better. The top-level `report.score` is the first selected
 metric. Bundle reports preserve every selected canonical key in
 `details.results` and every member pipeline ID.
@@ -53,6 +55,11 @@ universal standard. `nsrmr` uses `srmrpy` fast normalized mode at 16 kHz and
 is a dimensionless modulation-energy ratio, not dB. `lps` uses the pinned URGENT
 2025 wav2vec2-espeak phoneme model and scores `1 - edit_distance /
 reference_phoneme_length`; it can be negative.
+`visqol` uses the official Google ViSQOL v3.3.3 C++ CLI at source
+commit `c3aa2e498e0f7f14202643594335a0b9ee40bdd9`, with the speech-mode
+deep-lattice MOS-LQO mapper. It compares matched reference and enhanced audio
+at 16 kHz and reports the native 1–5 score. The third-party `visqol-python`
+package is not used. See the [node setup](../../src/sure_eval/evaluation/nodes/scoring/visqol/README.md).
 
 Existing `dnsmos` remains the calibrated P.835-style **OVRL** score. New
 `dnsmos_sig`, `dnsmos_bak`, and `dnsmos_p808` select the provider's calibrated
@@ -64,7 +71,9 @@ mixed with `stoi`, `pesq`, or `si_sdr` as if they used the same measurement
 definition. `squim_mos` is TorchAudio SQUIM Subjective: it predicts MOS from
 the enhanced waveform and a separately staged clean non-matching reference,
 so it is not a human listening test or a pure no-reference model. `scoreq` is
-the natural-speech no-reference SCOREQ MOS predictor. `nisqa_*` are the five DIM outputs
+the natural-speech no-reference SCOREQ MOS predictor. `nomad` is the official
+NOMAD non-matching-reference embedding distance to a fixed clean reference
+pool; it is lower-is-better and is not a MOS prediction. `nisqa_*` are the five DIM outputs
 from the same NISQA v2 checkpoint, with one corpus mean per output.
 `sq_ast_*` are SQ-AST's five non-intrusive predictions using the improved
 weights: overall quality, noisiness, discontinuity, coloration, and loudness.
@@ -127,6 +136,14 @@ use optional pip packages:
 python -m pip install ".[se]"
 ```
 
+`scoring/visqol` requires a separate build of Google's pinned CLI binary
+and its lattice model. Prepare the official binding as described in the node
+README, then check it with:
+
+```bash
+sure-eval env check --node scoring/visqol
+```
+
 MOS nodes use the existing node-local environments:
 `scoring/dnsmos`, `scoring/wv_mos`, and `scoring/utmos`.
 DNSMOS component routes reuse `scoring/dnsmos`'s ONNX runtime assets. New
@@ -139,6 +156,7 @@ lightweight nodes require `pystoi` (`estoi`), `librosa` (`lsd`), or
 | `squim_stoi`, `squim_pesq`, `squim_si_sdr` | TorchAudio `squim_objective_dns2020.pth` | `SURE_SE_SQUIM_OBJECTIVE_CKPT` | Objective weights CC BY 4.0 |
 | `squim_mos` | TorchAudio `squim_subjective_bvcc_daps.pth` plus a clean non-matching WAV | `SURE_SE_SQUIM_SUBJECTIVE_CKPT`, `SURE_SE_SQUIM_SUBJECTIVE_NMR` | Subjective weights CC BY-NC 4.0 |
 | `scoreq` | Natural-speech `adapt_nr_telephone.onnx` | `sure-eval env download --node scoring/scoreq` or `SURE_SE_SCOREQ_CHECKPOINT` | Verify model asset terms |
+| `nomad` | `nomad_best_model.pt`, `wav2vec_small.pt`, and a clean non-matching reference pool | `SURE_SE_NOMAD_CHECKPOINT`, `SURE_SE_NOMAD_WAV2VEC_CHECKPOINT`, `SURE_SE_NOMAD_REFERENCE_DIR` | Official code MIT; checkpoint and pool terms must be verified |
 | `sq_ast_*` | Improved `mos/noi/dis/col/loud.pth` heads and pinned `MIT/ast-finetuned-audioset-10-10-0.4593` snapshot | `SURE_SE_SQ_AST_*_CKPT`, `SURE_SE_SQ_AST_BASE_MODEL_DIR` | Repository code MIT; base model BSD-3-Clause; improved head asset terms unspecified |
 | `nisqa_*` | NISQA DIM `nisqa.tar` | `SURE_SE_NISQA_DIM_CKPT` | Model weights CC BY-NC-SA 4.0; verify permitted use |
 

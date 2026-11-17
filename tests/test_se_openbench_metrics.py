@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import csv
+import hashlib
 import json
 import math
 import subprocess
 import sys
+import types
 import wave
 from pathlib import Path
 
@@ -23,7 +26,7 @@ from sure_eval.evaluation.nodes.scoring.lps.node import LPSProvider, levenshtein
 
 
 NEW_METRICS = (
-    "estoi", "lsd", "nsrmr", "lps", "dnsmos_p808", "dnsmos_sig",
+    "estoi", "lsd", "nsrmr", "lps", "visqol", "nomad", "dnsmos_p808", "dnsmos_sig",
     "dnsmos_bak", "squim_stoi", "squim_pesq", "squim_si_sdr",
     "squim_mos", "scoreq",
     "sq_ast_mos", "sq_ast_noi", "sq_ast_dis", "sq_ast_col", "sq_ast_loud",
@@ -53,6 +56,177 @@ def test_new_atomic_routes_and_original_default_bundle() -> None:
     default = build_pipeline_spec("se")
     assert default["metrics"] == ["si-sdr", "stoi", "pesq", "dnsmos", "wv-mos", "utmos"]
     assert default["pipeline_id"].endswith("utmos.utmos_v1")
+
+
+def test_visqol_is_a_full_reference_route() -> None:
+    route = list_metric_routes("se", metric="visqol")["routes"][0]
+    assert route["pipeline_id"] == "se.any.visqol.visqol_v1"
+    assert route["environments"][0]["group"] == "se-full-reference"
+    assert route["input_contract"] == "scoring/visqol"
+
+    from sure_eval.evaluation.tasks.se.pipeline import evaluate_se_samples
+    from sure_eval.evaluation.tasks.se.types import SESample
+
+    report = evaluate_se_samples(
+        [SESample(enhanced_audio="enhanced.wav", reference_audio="clean.wav", sample_id="utt1")],
+        metrics=("visqol",),
+        reference_providers={"visqol": lambda prediction, reference, **kwargs: {"visqol": 3.7}},
+    )
+    assert report.pipeline_id == "se.any.visqol.visqol_v1"
+    assert report.input_contract.required_roles == ("enhanced_audio", "reference_audio")
+    assert report.details["results"]["visqol"]["score"] == pytest.approx(3.7)
+
+
+def test_visqol_provider_calls_google_cli_with_paired_16k_audio(
+    monkeypatch, tmp_path: Path
+) -> None:
+    from sure_eval.evaluation.nodes.scoring._full_reference_audio import ViSQOLProvider
+
+    model = tmp_path / ViSQOLProvider.MODEL_FILENAME
+    model.write_bytes(b"test model")
+    binary = tmp_path / "visqol"
+    binary.write_bytes(b"test binary")
+    binary.chmod(0o755)
+    reference = tmp_path / "reference.wav"
+    enhanced = tmp_path / "enhanced.wav"
+    _wav(reference, np.array([0.0, 0.5, -0.5, 0.0], dtype=np.float32))
+    _wav(enhanced, np.array([0.0, 0.25, -0.25, 0.0], dtype=np.float32))
+
+    observed = {}
+
+    def fake_run(command, **kwargs):
+        observed["command"] = command
+        assert kwargs["check"] is False
+        flags = dict(arg.split("=", 1) for arg in command[1:])
+        assert flags["--use_speech_mode"] == "true"
+        assert flags["--use_lattice_model"] == "true"
+        assert flags["--use_unscaled_speech_mos_mapping"] == "false"
+        assert flags["--search_window_radius"] == "60"
+        assert flags["--similarity_to_quality_model"] == str(model)
+        with wave.open(flags["--reference_file"], "rb") as clean:
+            assert (
+                clean.getframerate(), clean.getnchannels(), clean.getsampwidth()
+            ) == (16000, 1, 2)
+            observed["clean"] = np.frombuffer(clean.readframes(4), dtype="<i2")
+        with wave.open(flags["--degraded_file"], "rb") as degraded:
+            assert (
+                degraded.getframerate(), degraded.getnchannels(), degraded.getsampwidth()
+            ) == (16000, 1, 2)
+            observed["degraded"] = np.frombuffer(degraded.readframes(4), dtype="<i2")
+        with open(flags["--results_csv"], "w", encoding="utf-8", newline="") as handle:
+            writer = csv.writer(handle)
+            writer.writerow(("reference", "degraded", "moslqo"))
+            writer.writerow((flags["--reference_file"], flags["--degraded_file"], 3.25))
+        return types.SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    result = ViSQOLProvider(binary_path=str(binary), model_path=str(model))(
+        str(enhanced), str(reference)
+    )
+    assert observed["command"][0] == str(binary)
+    assert observed["clean"][1] > observed["degraded"][1]
+    assert result["visqol"] == pytest.approx(3.25)
+    assert result["backend"] == "google-visqol-v3.3.3-cli"
+    assert result["binary_sha256"] == hashlib.sha256(b"test binary").hexdigest()
+    assert result["model_sha256"] == hashlib.sha256(b"test model").hexdigest()
+
+
+def test_visqol_provider_rejects_missing_official_model(monkeypatch) -> None:
+    from sure_eval.evaluation.nodes.scoring._full_reference_audio import ViSQOLProvider
+
+    monkeypatch.setenv("SURE_SE_VISQOL_BINARY", "/no/such/visqol")
+    monkeypatch.delenv("SURE_SE_VISQOL_LATTICE_MODEL", raising=False)
+    with pytest.raises(RuntimeError, match="SURE_SE_VISQOL_LATTICE_MODEL"):
+        ViSQOLProvider()._validate_assets()
+
+
+def test_visqol_provider_rejects_cli_success_without_score(monkeypatch, tmp_path: Path) -> None:
+    from sure_eval.evaluation.nodes.scoring._full_reference_audio import ViSQOLProvider
+
+    binary = tmp_path / "visqol"
+    binary.write_bytes(b"test binary")
+    binary.chmod(0o755)
+    model = tmp_path / ViSQOLProvider.MODEL_FILENAME
+    model.write_bytes(b"test model")
+    audio = tmp_path / "audio.wav"
+    _wav(audio, np.array([0.0, 0.5, 0.0], dtype=np.float32))
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda *args, **kwargs: types.SimpleNamespace(returncode=0, stdout="", stderr=""),
+    )
+
+    provider = ViSQOLProvider(binary_path=str(binary), model_path=str(model))
+    with pytest.raises(RuntimeError, match="no results CSV"):
+        provider(str(audio), str(audio))
+
+
+def test_nomad_route_uses_non_matching_reference_protocol() -> None:
+    route = list_metric_routes("se", metric="nomad")["routes"][0]
+    assert route["pipeline_id"] == "se.any.nomad.nomad_v1"
+    assert route["input_contract"] == "scoring/nomad"
+    assert route["environments"][0]["group"] == "se-no-reference"
+
+    from sure_eval.evaluation.tasks.se.pipeline import evaluate_se_samples
+    from sure_eval.evaluation.tasks.se.types import SESample
+
+    report = evaluate_se_samples(
+        [SESample(enhanced_audio="enhanced.wav", sample_id="utt1")],
+        metrics=("nomad",),
+        mos_providers={"nomad": lambda prediction, reference, **kwargs: {"nomad": 0.42}},
+    )
+    result = report.details["results"]["nomad"]
+    assert report.pipeline_id == "se.any.nomad.nomad_v1"
+    assert result["score"] == pytest.approx(0.42)
+    assert result["higher_is_better"] is False
+    assert result["unit"] == "embedding_distance"
+
+
+def test_nomad_provider_averages_fixed_clean_reference_pool(monkeypatch, tmp_path: Path) -> None:
+    from sure_eval.evaluation.nodes.scoring._nomad import NOMADProvider
+
+    checkpoint = tmp_path / "nomad_best_model.pt"
+    wav2vec = tmp_path / "wav2vec_small.pt"
+    checkpoint.write_bytes(b"checkpoint")
+    wav2vec.write_bytes(b"wav2vec")
+    reference_dir = tmp_path / "reference_pool"
+    reference_dir.mkdir()
+    first = reference_dir / "first.wav"
+    second = reference_dir / "second.wav"
+    prediction = tmp_path / "prediction.wav"
+    for path in (first, second, prediction):
+        path.write_bytes(b"audio")
+
+    provider = NOMADProvider(
+        checkpoint=str(checkpoint),
+        wav2vec_checkpoint=str(wav2vec),
+        reference_dir=str(reference_dir),
+    )
+    values = {
+        str(first.resolve()): np.array([0.0, 0.0], dtype=np.float32),
+        str(second.resolve()): np.array([2.0, 0.0], dtype=np.float32),
+        str(prediction.resolve()): np.array([1.0, 0.0], dtype=np.float32),
+    }
+    monkeypatch.setattr(provider, "_embedding", lambda path: values[str(path.resolve())])
+    result = provider(str(prediction))
+    assert result["nomad"] == pytest.approx(1.0)
+    assert result["score"] == pytest.approx(1.0)
+    assert result["num_non_matching_references"] == 2
+    assert result["higher_is_better"] is False
+
+
+def test_nomad_provider_requires_explicit_reference_pool(monkeypatch, tmp_path: Path) -> None:
+    from sure_eval.evaluation.nodes.scoring._nomad import NOMADProvider
+
+    checkpoint = tmp_path / "nomad_best_model.pt"
+    wav2vec = tmp_path / "wav2vec_small.pt"
+    checkpoint.write_bytes(b"checkpoint")
+    wav2vec.write_bytes(b"wav2vec")
+    monkeypatch.delenv("SURE_SE_NOMAD_REFERENCE_DIR", raising=False)
+    monkeypatch.delenv("SURE_SE_NOMAD_NMR_DIR", raising=False)
+    provider = NOMADProvider(checkpoint=str(checkpoint), wav2vec_checkpoint=str(wav2vec))
+    with pytest.raises(RuntimeError, match="SURE_SE_NOMAD_REFERENCE_DIR"):
+        provider._validate_assets()
 
 
 def test_estoi_and_lsd_match_local_score_definitions(tmp_path: Path) -> None:
@@ -150,7 +324,7 @@ def test_new_routes_require_reference_only_when_needed(tmp_path: Path) -> None:
     enhanced.write_bytes(b"test")
     samples = tmp_path / "samples.jsonl"
     samples.write_text(json.dumps({"sample_id": "a", "enhanced_audio": "enhanced.wav"}) + "\n")
-    for metric in ("estoi", "lsd", "lps"):
+    for metric in ("estoi", "lsd", "lps", "visqol"):
         with pytest.raises(SampleJsonlError, match="reference_audio is required"):
             load_se_samples_jsonl(samples, metrics=(metric,))
     assert len(load_se_samples_jsonl(samples, metrics=("nisqa_mos", "squim_stoi", "nsrmr"))) == 1
@@ -161,15 +335,15 @@ def test_real_runtime_selects_shared_model_providers_without_loading_assets() ->
     from sure_eval.evaluation.audio_runtime import build_se_runtime
 
     runtime = build_se_runtime(
-        metrics=("estoi", "lsd", "lps", "dnsmos_p808", "dnsmos_sig",
+        metrics=("estoi", "lsd", "lps", "visqol", "nomad", "dnsmos_p808", "dnsmos_sig",
                  "squim_pesq", "squim_stoi", "squim_mos", "scoreq",
                  "nisqa_mos", "nisqa_noi", "nsrmr", "sq_ast_mos", "sq_ast_noi"),
         device="cpu",
     )
-    assert set(runtime["reference_providers"]) == {"estoi", "lsd", "lps"}
+    assert set(runtime["reference_providers"]) == {"estoi", "lsd", "lps", "visqol"}
     mos = runtime["mos_providers"]
     assert set(mos) >= {"dnsmos_p808", "dnsmos_sig", "squim_pesq", "squim_stoi",
-                        "squim_mos", "scoreq", "nisqa_mos", "nisqa_noi", "nsrmr",
+                        "squim_mos", "scoreq", "nomad", "nisqa_mos", "nisqa_noi", "nsrmr",
                         "sq_ast_mos", "sq_ast_noi"}
     assert mos["dnsmos_p808"] is mos["dnsmos_sig"]
     assert mos["squim_pesq"] is mos["squim_stoi"]

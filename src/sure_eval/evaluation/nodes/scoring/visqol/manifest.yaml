@@ -1,0 +1,20 @@
+id: scoring/visqol
+version: v1
+stage: scoring
+language_sensitive: false
+input_schema: speech_enhancement_audio_pairs
+output_schema: full_reference_audio_metric
+implementation: sure_eval.evaluation.nodes.scoring.visqol.node
+metric: visqol
+backend: google-visqol-v3.3.3-cli
+internal_stages:
+  - audio_pair_decode
+  - metric_provider
+  - score_normalization
+  - mean_aggregation
+used_by:
+  - SE full-reference speech enhancement quality
+notes:
+  - ViSQOL speech mode uses 16 kHz matched reference and enhanced audio.
+  - MOS-LQO is reported on the native 1–5 scale; higher is better.
+  - The route uses the official v3.3.3 C++ CLI and deep-lattice mapper.

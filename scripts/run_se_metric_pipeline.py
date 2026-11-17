@@ -58,6 +58,7 @@ def _build_stub_providers() -> tuple[dict[str, Any], dict[str, Any]]:
             "squim_si_sdr": lambda prediction, reference="", **kwargs: {"squim_si_sdr": 10.0},
             "squim_mos": lambda prediction, reference="", **kwargs: {"squim_mos": 3.7},
             "scoreq": lambda prediction, reference="", **kwargs: {"scoreq": 3.8},
+            "nomad": lambda prediction, reference="", **kwargs: {"nomad": 0.42},
             "sq_ast_mos": lambda prediction, reference="", **kwargs: {"sq_ast_mos": 3.9},
             "sq_ast_noi": lambda prediction, reference="", **kwargs: {"sq_ast_noi": 4.0},
             "sq_ast_dis": lambda prediction, reference="", **kwargs: {"sq_ast_dis": 3.7},
@@ -76,6 +77,7 @@ def _build_stub_providers() -> tuple[dict[str, Any], dict[str, Any]]:
             "lsd": lambda prediction, reference, **kwargs: {"lsd": 5.2},
             "lps": lambda prediction, reference, **kwargs: {"lps": 0.82},
             "pesq": lambda prediction, reference, **kwargs: {"pesq": 2.8},
+            "visqol": lambda prediction, reference, **kwargs: {"visqol": 3.4},
         },
     )
 
@@ -152,6 +154,14 @@ def _build_real_providers(*, device: str, cache_dir: Path, metrics: tuple[str, .
         reference_providers["lps"] = LPSProvider(device=device)
     if "pesq" in metrics:
         reference_providers["pesq"] = PESQProvider()
+    if "visqol" in metrics:
+        from sure_eval.evaluation.nodes.scoring._full_reference_audio import ViSQOLProvider
+
+        reference_providers["visqol"] = ViSQOLProvider()
+    if "nomad" in metrics:
+        from sure_eval.evaluation.nodes.scoring._nomad import NOMADProvider
+
+        mos_providers["nomad"] = NOMADProvider(device=device)
     return mos_providers, reference_providers
 
 
@@ -204,6 +214,9 @@ def _normalize_metric(metric: str) -> str:
         "nisqa-dis": "nisqa_dis",
         "nisqa-col": "nisqa_col",
         "nisqa-loud": "nisqa_loud",
+        "visqol": "visqol",
+        "nomad": "nomad",
+        "nomad-nmr": "nomad",
     }.get(normalized, normalized)
 
 

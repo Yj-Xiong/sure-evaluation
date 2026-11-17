@@ -2,8 +2,14 @@
 
 from __future__ import annotations
 
+import csv
+import hashlib
 import math
+import os
+import subprocess
+import tempfile
 import wave
+from pathlib import Path
 from statistics import fmean
 from typing import Any, Callable, Dict, List, Tuple, Union
 
@@ -258,6 +264,142 @@ class PESQProvider:
         }
 
 
+class ViSQOLProvider:
+    """Google ViSQOL v3.3.3 speech-mode MOS-LQO via its C++ CLI."""
+
+    SAMPLE_RATE = 16000
+    MODEL_FILENAME = (
+        "lattice_tcditugenmeetpackhref_ls2_nl60_lr12_bs2048_"
+        "learn.005_ep2400_train1_7_raw.tflite"
+    )
+
+    def __init__(
+        self, *, binary_path: str | None = None, model_path: str | None = None
+    ) -> None:
+        self.binary_path = binary_path or os.environ.get("SURE_SE_VISQOL_BINARY")
+        self.model_path = model_path or os.environ.get("SURE_SE_VISQOL_LATTICE_MODEL")
+        self._assets: tuple[Path, Path, str, str] | None = None
+
+    def _validate_assets(self) -> tuple[Path, Path, str, str]:
+        if self._assets is not None:
+            return self._assets
+        if not self.binary_path:
+            raise RuntimeError(
+                "ViSQOL requires SURE_SE_VISQOL_BINARY pointing to the "
+                "official Google v3.3.3 executable"
+            )
+        if not self.model_path:
+            raise RuntimeError(
+                "ViSQOL requires SURE_SE_VISQOL_LATTICE_MODEL pointing to the "
+                "model file from Google's v3.3.3 source tree"
+            )
+        binary = Path(self.binary_path).expanduser().resolve()
+        if not binary.is_file() or not os.access(binary, os.X_OK):
+            raise RuntimeError(f"ViSQOL binary is missing or not executable: {binary}")
+        model = Path(self.model_path).expanduser().resolve()
+        if model.name != self.MODEL_FILENAME or not model.is_file():
+            raise RuntimeError(
+                f"ViSQOL v3.3.3 speech lattice model is missing or incorrect: {model}"
+            )
+        self._assets = (binary, model, self._sha256(binary), self._sha256(model))
+        return self._assets
+
+    def __call__(self, enhanced_audio: str, reference_audio: str, **kwargs: Any) -> dict[str, Any]:
+        if not reference_audio:
+            raise ValueError("ViSQOL requires a matched reference audio path")
+        binary, model, binary_sha256, model_sha256 = self._validate_assets()
+        reference = self._load_waveform(reference_audio)
+        enhanced = self._load_waveform(enhanced_audio)
+        reference, enhanced = align_pair(reference, enhanced)
+        with tempfile.TemporaryDirectory(prefix="sure_visqol_", dir="/tmp") as temp_dir:
+            reference_wav = Path(temp_dir) / "reference.wav"
+            enhanced_wav = Path(temp_dir) / "enhanced.wav"
+            results_csv = Path(temp_dir) / "results.csv"
+            self._write_wav(reference_wav, reference)
+            self._write_wav(enhanced_wav, enhanced)
+            command = [
+                str(binary),
+                f"--reference_file={reference_wav}",
+                f"--degraded_file={enhanced_wav}",
+                f"--results_csv={results_csv}",
+                f"--similarity_to_quality_model={model}",
+                "--use_speech_mode=true",
+                "--use_lattice_model=true",
+                "--use_unscaled_speech_mos_mapping=false",
+                "--search_window_radius=60",
+            ]
+            try:
+                completed = subprocess.run(
+                    command, cwd=temp_dir, capture_output=True, text=True, timeout=120, check=False
+                )
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                raise RuntimeError(f"ViSQOL CLI could not run: {exc}") from exc
+            if completed.returncode != 0 or not results_csv.is_file():
+                detail = (completed.stderr or completed.stdout).strip()[-600:]
+                raise RuntimeError(
+                    f"ViSQOL CLI failed with exit {completed.returncode}: "
+                    f"{detail or 'no results CSV'}"
+                )
+            with results_csv.open("r", encoding="utf-8", newline="") as handle:
+                rows = list(csv.DictReader(handle))
+            if len(rows) != 1 or "moslqo" not in rows[0]:
+                raise RuntimeError("ViSQOL CLI returned an invalid results CSV")
+            if (
+                rows[0].get("reference") != str(reference_wav)
+                or rows[0].get("degraded") != str(enhanced_wav)
+            ):
+                raise RuntimeError("ViSQOL CLI results CSV does not match the requested audio pair")
+            score = float(rows[0]["moslqo"])
+            if not math.isfinite(score) or not 1.0 <= score <= 5.0:
+                raise ValueError("ViSQOL MOS-LQO score is non-finite or outside 1–5")
+        return {
+            "visqol": score,
+            "mos_lqo": score,
+            "score": score,
+            "backend": "google-visqol-v3.3.3-cli",
+            "algorithm_version": "3.3.3",
+            "input_sample_rate_hz": self.SAMPLE_RATE,
+            "mode": "speech",
+            "use_lattice_model": True,
+            "search_window_radius": 60,
+            "binary_sha256": binary_sha256,
+            "model_sha256": model_sha256,
+        }
+
+    @classmethod
+    def _load_waveform(cls, path: str) -> np.ndarray:
+        waveform, sample_rate = read_audio_mono(path)
+        if sample_rate <= 0:
+            raise ValueError(f"ViSQOL input has invalid sample rate: {path}")
+        if sample_rate != cls.SAMPLE_RATE:
+            from scipy.signal import resample_poly
+
+            divisor = math.gcd(sample_rate, cls.SAMPLE_RATE)
+            waveform = resample_poly(
+                waveform, cls.SAMPLE_RATE // divisor, sample_rate // divisor
+            )
+        return np.ascontiguousarray(waveform, dtype=np.float32)
+
+    @classmethod
+    def _write_wav(cls, path: Path, waveform: np.ndarray) -> None:
+        if not np.all(np.isfinite(waveform)):
+            raise ValueError("ViSQOL input audio contains non-finite samples")
+        pcm = np.round(np.clip(waveform, -1.0, 1.0) * 32767.0).astype("<i2")
+        with wave.open(str(path), "wb") as handle:
+            handle.setnchannels(1)
+            handle.setsampwidth(2)
+            handle.setframerate(cls.SAMPLE_RATE)
+            handle.writeframes(pcm.tobytes())
+
+    @staticmethod
+    def _sha256(path: Path) -> str:
+        digest = hashlib.sha256()
+        with path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+        return digest.hexdigest()
+
+
 def _score_key(metric_name: str) -> str:
     return {
         "si-sdr": "si_sdr",
@@ -266,6 +408,7 @@ def _score_key(metric_name: str) -> str:
         "lsd": "lsd",
         "lps": "lps",
         "pesq": "pesq",
+        "visqol": "visqol",
     }.get(metric_name, "score")
 
 
@@ -277,6 +420,7 @@ def _fallback_score_key(row: dict[str, Any], metric_name: str) -> str | None:
         "lsd": ("lsd", "score"),
         "lps": ("lps", "score"),
         "pesq": ("pesq", "mos_lqo", "score"),
+        "visqol": ("visqol", "mos_lqo", "score"),
     }.get(metric_name, ("score",))
     for key in candidates:
         if key in row:

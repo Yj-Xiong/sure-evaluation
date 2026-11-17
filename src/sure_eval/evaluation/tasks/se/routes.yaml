@@ -53,6 +53,14 @@ routes:
     input_contract: scoring/pesq
     executor: sure_eval.evaluation.tasks.se.pipeline.evaluate_se_samples
   -
+    metric: visqol
+    family: full_reference_quality
+    pipeline_id: se.any.visqol.visqol_v1
+    nodes:
+      - scoring/visqol
+    input_contract: scoring/visqol
+    executor: sure_eval.evaluation.tasks.se.pipeline.evaluate_se_samples
+  -
     metric: dnsmos
     family: no_reference_quality
     pipeline_id: se.any.dnsmos.dnsmos_v1
@@ -152,6 +160,15 @@ routes:
     nodes:
       - scoring/scoreq
     input_contract: scoring/scoreq
+    executor: sure_eval.evaluation.tasks.se.pipeline.evaluate_se_samples
+  -
+    metric: nomad
+    aliases: [nomad-nmr]
+    family: no_reference_quality_prediction
+    pipeline_id: se.any.nomad.nomad_v1
+    nodes:
+      - scoring/nomad
+    input_contract: scoring/nomad
     executor: sure_eval.evaluation.tasks.se.pipeline.evaluate_se_samples
   -
     metric: sq_ast_mos

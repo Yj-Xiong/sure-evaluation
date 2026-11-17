@@ -8,12 +8,14 @@ implemented_metrics:
   - lsd
   - lps
   - pesq
+  - visqol
   - nsrmr
   - squim_stoi
   - squim_pesq
   - squim_si_sdr
   - squim_mos
   - scoreq
+  - nomad
   - sq_ast_mos
   - sq_ast_noi
   - sq_ast_dis
@@ -90,6 +92,14 @@ input_contracts:
     main_report: true
   scoring/pesq:
     purpose: se_full_reference_perceptual_quality
+    required_roles: [enhanced_audio, reference_audio]
+    optional_roles: [noisy_audio]
+    row_format: speech_enhancement_audio_pairs
+    alignment_key: sample_id
+    aggregation: mean
+    main_report: true
+  scoring/visqol:
+    purpose: se_full_reference_visqol_speech_quality
     required_roles: [enhanced_audio, reference_audio]
     optional_roles: [noisy_audio]
     row_format: speech_enhancement_audio_pairs
@@ -192,6 +202,14 @@ input_contracts:
     alignment_key: sample_id
     aggregation: mean
     main_report: true
+  scoring/nomad:
+    purpose: se_no_reference_non_matching_embedding_distance
+    required_roles: [enhanced_audio]
+    optional_roles: [noisy_audio, reference_audio]
+    row_format: enhanced_audio_rows
+    alignment_key: sample_id
+    aggregation: mean
+    main_report: true
   scoring/sq_ast_mos:
     purpose: se_no_reference_predicted_sq_ast_overall_quality
     required_roles: [enhanced_audio]
@@ -280,6 +298,7 @@ pipeline_nodes:
     lsd: scoring/lsd
     lps: scoring/lps
     pesq: scoring/pesq
+    visqol: scoring/visqol
   no_reference:
     dnsmos: scoring/dnsmos
     dnsmos_p808: scoring/dnsmos_p808
@@ -293,6 +312,7 @@ pipeline_nodes:
     squim_si_sdr: scoring/squim_si_sdr
     squim_mos: scoring/squim_mos
     scoreq: scoring/scoreq
+    nomad: scoring/nomad
     sq_ast_mos: scoring/sq_ast_mos
     sq_ast_noi: scoring/sq_ast_noi
     sq_ast_dis: scoring/sq_ast_dis

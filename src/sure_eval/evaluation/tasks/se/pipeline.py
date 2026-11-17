@@ -23,8 +23,8 @@ from sure_eval.evaluation.pipeline_identity import (
 from sure_eval.evaluation.tasks.se.types import SESample
 
 _ZIP_SENTINEL = object()
-_MOS_METRICS = {"dnsmos", "dnsmos_p808", "dnsmos_sig", "dnsmos_bak", "wv-mos", "utmos", "nsrmr", "squim_stoi", "squim_pesq", "squim_si_sdr", "squim_mos", "scoreq", "nisqa_mos", "nisqa_noi", "nisqa_dis", "nisqa_col", "nisqa_loud", "sq_ast_mos", "sq_ast_noi", "sq_ast_dis", "sq_ast_col", "sq_ast_loud"}
-_FULL_REFERENCE_METRICS = {"si-sdr", "stoi", "estoi", "lsd", "pesq", "lps"}
+_MOS_METRICS = {"dnsmos", "dnsmos_p808", "dnsmos_sig", "dnsmos_bak", "wv-mos", "utmos", "nsrmr", "squim_stoi", "squim_pesq", "squim_si_sdr", "squim_mos", "scoreq", "nomad", "nisqa_mos", "nisqa_noi", "nisqa_dis", "nisqa_col", "nisqa_loud", "sq_ast_mos", "sq_ast_noi", "sq_ast_dis", "sq_ast_col", "sq_ast_loud"}
+_FULL_REFERENCE_METRICS = {"si-sdr", "stoi", "estoi", "lsd", "pesq", "lps", "visqol"}
 _DEFAULT_METRICS = ("si-sdr", "stoi", "pesq", "dnsmos", "wv-mos", "utmos")
 _NEW_METRIC_METADATA = {
     "estoi": {"unit": "score", "higher_is_better": True},
@@ -39,6 +39,8 @@ _NEW_METRIC_METADATA = {
     "squim_si_sdr": {"unit": "predicted_dB", "higher_is_better": True},
     "squim_mos": {"unit": "predicted_mos", "higher_is_better": True},
     "scoreq": {"unit": "predicted_mos", "higher_is_better": True},
+    "nomad": {"unit": "embedding_distance", "higher_is_better": False},
+    "visqol": {"unit": "mos_lqo", "higher_is_better": True},
     "sq_ast_mos": {"unit": "predicted_mos", "higher_is_better": True},
     **{
         name: {"unit": "predicted_acr_score", "higher_is_better": True}
@@ -243,6 +245,10 @@ def _default_reference_provider(metric_name: str):
         return LPSProvider()
     if metric_name == "pesq":
         return PESQProvider()
+    if metric_name == "visqol":
+        from sure_eval.evaluation.nodes.scoring._full_reference_audio import ViSQOLProvider
+
+        return ViSQOLProvider()
     raise ValueError(f"Unsupported SE full-reference metric: {metric_name}")
 
 
@@ -297,6 +303,8 @@ def _normalize_metric(metric: str) -> str:
         "squim-si-sdr": "squim_si_sdr",
         "squim-mos": "squim_mos",
         "scoreq": "scoreq",
+        "nomad": "nomad",
+        "nomad-nmr": "nomad",
         "sqast-mos": "sq_ast_mos",
         "sqast-noi": "sq_ast_noi",
         "sqast-dis": "sq_ast_dis",
@@ -313,6 +321,7 @@ def _normalize_metric(metric: str) -> str:
         "nisqa-col": "nisqa_col",
         "nisqa-loud": "nisqa_loud",
         "pesq": "pesq",
+        "visqol": "visqol",
     }
     return aliases.get(normalized, normalized)
 
@@ -339,6 +348,8 @@ def _node_id_for_metric(metric_name: str) -> str:
         "squim_si_sdr": "scoring/squim_si_sdr",
         "squim_mos": "scoring/squim_mos",
         "scoreq": "scoring/scoreq",
+        "nomad": "scoring/nomad",
+        "visqol": "scoring/visqol",
         "sq_ast_mos": "scoring/sq_ast_mos",
         "sq_ast_noi": "scoring/sq_ast_noi",
         "sq_ast_dis": "scoring/sq_ast_dis",

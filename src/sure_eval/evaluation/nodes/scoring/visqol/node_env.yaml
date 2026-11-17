@@ -1,0 +1,18 @@
+id: scoring/visqol
+group: se-full-reference
+runtime:
+  type: pip
+  optional: true
+  gpu: false
+packages:
+  - name: scipy
+    version: ">=1.7.0"
+  - name: soundfile
+    version: ">=0.12.0"
+verify:
+  imports: [numpy, scipy, soundfile]
+  files:
+    - path: visqol
+      relative_to_env: SURE_SE_VISQOL_BINARY
+    - path: lattice_tcditugenmeetpackhref_ls2_nl60_lr12_bs2048_learn.005_ep2400_train1_7_raw.tflite
+      relative_to_env: SURE_SE_VISQOL_LATTICE_MODEL

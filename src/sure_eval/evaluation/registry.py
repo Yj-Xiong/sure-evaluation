@@ -8,6 +8,7 @@ from sure_eval.evaluation.tasks.asr.metrics import CERMetric, WERMetric
 from sure_eval.evaluation.tasks.classification.metrics import AccuracyMetric
 from sure_eval.evaluation.tasks.s2tt.metrics import BLEUMetric, BLEURT20Metric, XCOMETXLMetric
 from sure_eval.evaluation.tasks.se.metrics import (
+    NOMADMetric,
     PESQMetric,
     SCOREQMetric,
     SQASTCOLMetric,
@@ -18,6 +19,7 @@ from sure_eval.evaluation.tasks.se.metrics import (
     SISDRMetric as SESISDRMetric,
     STOIMetric,
     SQUIMMOSMetric,
+    ViSQOLMetric,
 )
 from sure_eval.evaluation.tasks.tts.metrics import (
     CERMetric as TTSCERMetric,
@@ -50,9 +52,12 @@ class MetricRegistry:
         "sisdr": SESISDRMetric,
         "stoi": STOIMetric,
         "pesq": PESQMetric,
+        "visqol": ViSQOLMetric,
+        "nomad": NOMADMetric,
         "squim_mos": SQUIMMOSMetric,
         "squim-mos": SQUIMMOSMetric,
         "scoreq": SCOREQMetric,
+        "nomad-nmr": NOMADMetric,
         "sq_ast_mos": SQASTMOSMetric,
         "sq_ast_noi": SQASTNOIMetric,
         "sq_ast_dis": SQASTDISMetric,

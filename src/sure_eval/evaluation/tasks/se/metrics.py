@@ -7,7 +7,13 @@ from statistics import fmean
 from typing import Any, Callable, Dict, Union
 
 from sure_eval.evaluation.base import MetricResult
-from sure_eval.evaluation.nodes.scoring._full_reference_audio import PESQProvider, SISDRProvider, STOIProvider
+from sure_eval.evaluation.nodes.scoring._full_reference_audio import (
+    PESQProvider,
+    SISDRProvider,
+    STOIProvider,
+    ViSQOLProvider,
+)
+from sure_eval.evaluation.nodes.scoring._nomad import NOMADProvider
 
 ScoreProvider = Callable[..., Union[float, Dict[str, Any]]]
 
@@ -176,6 +182,30 @@ class SCOREQMetric(_NoReferenceMetric):
         return next((key for key in ("scoreq", "mos", "score") if key in row), None)
 
 
+class NOMADMetric(_NoReferenceMetric):
+    """NOMAD non-matching-reference embedding distance."""
+
+    metric_name = "nomad"
+    source = MetricSource(
+        primary_reference=(
+            "Ragano, Skoglund, and Hines, NOMAD, ICASSP 2024"
+        ),
+        method=(
+            "Mean Euclidean distance from enhanced speech to a staged clean "
+            "non-matching reference pool; lower is better."
+        ),
+        score_key="nomad",
+        higher_is_better=False,
+        dependencies=("nomad_audio==0.0.8", "torch", "torchaudio", "fairseq"),
+    )
+
+    def _default_provider(self) -> ScoreProvider:
+        return NOMADProvider()
+
+    def _find_score_key(self, row: dict[str, Any]) -> str | None:
+        return next((key for key in ("nomad", "score", "distance") if key in row), None)
+
+
 def _sq_ast_source(dimension: str) -> MetricSource:
     return MetricSource(
         primary_reference="Wardah et al., SQ-AST, Interspeech 2025",
@@ -282,8 +312,35 @@ class PESQMetric(_FullReferenceMetric):
         return PESQProvider()
 
 
+class ViSQOLMetric(_FullReferenceMetric):
+    """ViSQOL v3.3.3 speech-mode MOS-LQO against matched clean speech."""
+
+    metric_name = "visqol"
+    source = MetricSource(
+        primary_reference="Chinen et al., ViSQOL v3, QoMEX 2020; v3.3.3 release",
+        method=(
+            "Full-reference ViSQOL speech-mode MOS-LQO with 16 kHz input and "
+            "the v3.3.3 deep-lattice quality mapper."
+        ),
+        score_key="visqol",
+        higher_is_better=True,
+        dependencies=(
+            "google/visqol@c3aa2e498e0f7f14202643594335a0b9ee40bdd9 CLI",
+            "scipy",
+            "soundfile",
+        ),
+    )
+
+    def _default_provider(self) -> ScoreProvider:
+        return ViSQOLProvider()
+
+    def _find_score_key(self, row: dict[str, Any]) -> str | None:
+        return next((key for key in ("visqol", "mos_lqo", "score") if key in row), None)
+
+
 __all__ = [
     "PESQMetric",
+    "NOMADMetric",
     "SCOREQMetric",
     "SQASTCOLMetric",
     "SQASTDISMetric",
@@ -293,4 +350,5 @@ __all__ = [
     "SISDRMetric",
     "STOIMetric",
     "SQUIMMOSMetric",
+    "ViSQOLMetric",
 ]

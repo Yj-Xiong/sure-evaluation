@@ -329,12 +329,12 @@ def _first_speaker_metric(metrics: tuple[str, ...]) -> str:
 
 def _has_full_reference_se_metric(metrics: tuple[str, ...]) -> bool:
     normalized = {_normalize_se_metric(metric) for metric in metrics}
-    return bool(normalized & {"si-sdr", "stoi", "estoi", "lsd", "pesq", "lps"})
+    return bool(normalized & {"si-sdr", "stoi", "estoi", "lsd", "pesq", "lps", "visqol"})
 
 
 def _first_full_reference_se_metric(metrics: tuple[str, ...]) -> str:
     normalized = [_normalize_se_metric(metric) for metric in metrics]
-    return next((metric for metric in normalized if metric in {"si-sdr", "stoi", "estoi", "lsd", "pesq", "lps"}), "si-sdr")
+    return next((metric for metric in normalized if metric in {"si-sdr", "stoi", "estoi", "lsd", "pesq", "lps", "visqol"}), "si-sdr")
 
 
 def _normalize_se_metric(metric: str) -> str:
@@ -344,6 +344,7 @@ def _normalize_se_metric(metric: str) -> str:
         "si-sdr": "si-sdr",
         "wvmos": "wv-mos",
         "wv-mos": "wv-mos",
+        "visqol": "visqol",
     }.get(normalized, normalized)
 
 

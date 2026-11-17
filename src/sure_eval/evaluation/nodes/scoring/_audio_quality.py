@@ -56,6 +56,8 @@ def _score_key(metric_name: str) -> str:
         return "squim_mos"
     if metric_name == "scoreq":
         return "scoreq"
+    if metric_name == "nomad":
+        return "nomad"
     return "score"
 
 
@@ -66,6 +68,7 @@ def _fallback_score_key(row: dict[str, Any], metric_name: str) -> str | None:
         "utmos": ("utmos", "mos", "score"),
         "squim_mos": ("squim_mos", "mos", "score"),
         "scoreq": ("scoreq", "mos", "score"),
+        "nomad": ("nomad", "distance", "score"),
     }.get(metric_name, ("score", "avg_score", "avg score", "hyp_score", "similarity", "sim", "cosine_similarity"))
     for key in candidates:
         if key in row:

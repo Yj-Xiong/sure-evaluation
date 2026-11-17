@@ -89,6 +89,14 @@ def build_se_runtime(
         from sure_eval.evaluation.nodes.scoring._full_reference_audio import PESQProvider
 
         reference_providers["pesq"] = PESQProvider()
+    if "visqol" in requested:
+        from sure_eval.evaluation.nodes.scoring._full_reference_audio import ViSQOLProvider
+
+        reference_providers["visqol"] = ViSQOLProvider()
+    if "nomad" in requested:
+        from sure_eval.evaluation.nodes.scoring._nomad import NOMADProvider
+
+        runtime["mos_providers"]["nomad"] = NOMADProvider(device=device)
     if "nsrmr" in requested:
         from sure_eval.evaluation.nodes.scoring.nsrmr.node import NSRMRProvider
 
@@ -295,6 +303,7 @@ def _normalize_se_metric(metric: str) -> str:
             "squim_pesq", "squim_si_sdr", "nisqa_mos", "nisqa_noi",
             "nisqa_dis", "nisqa_col", "nisqa_loud", "squim_mos", "scoreq",
             "sq_ast_mos", "sq_ast_noi", "sq_ast_dis", "sq_ast_col", "sq_ast_loud",
+            "visqol", "nomad",
         )},
     }.get(normalized, normalized)
 

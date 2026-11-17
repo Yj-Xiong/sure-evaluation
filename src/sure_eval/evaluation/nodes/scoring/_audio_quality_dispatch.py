@@ -86,6 +86,10 @@ def score_mos_metric(
         from sure_eval.evaluation.nodes.scoring.scoreq import score_scoreq
 
         return score_scoreq(rows, provider=provider)
+    if metric_name == "nomad":
+        from sure_eval.evaluation.nodes.scoring.nomad import score_nomad
+
+        return score_nomad(rows, provider=provider)
     if metric_name.startswith("sq_ast_"):
         dimension = metric_name.removeprefix("sq_ast_")
         if dimension not in {"mos", "noi", "dis", "col", "loud"}:
@@ -155,4 +159,8 @@ def score_full_reference_metric(
         from sure_eval.evaluation.nodes.scoring.pesq import score_pesq
 
         return score_pesq(rows, provider=provider)
+    if metric_name == "visqol":
+        from sure_eval.evaluation.nodes.scoring.visqol import score_visqol
+
+        return score_visqol(rows, provider=provider)
     raise ValueError(f"unsupported full-reference audio metric: {metric_name}")
